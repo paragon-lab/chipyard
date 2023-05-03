@@ -92,7 +92,10 @@ HELP_COMPILATION_VARIABLES += \
 #########################################################################################
 # verilator/cxx binary and flags
 #########################################################################################
-VERILATOR := verilator --cc --exe
+ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+VERILATOR := verilator --cc --exe -Wno-WIDTHCONCAT -Wno-lint -Wno-REDEFMACRO -Wno-WIDTH -Wno-UNOPTFLAT -Wno-style -I$(ROOT_DIR)/../../generators/boom/src/main/resources/vsrc/HardFloat/source  +incdir+$(ROOT_DIR)/../../generators/boom/src/main/resources/vsrc/rvv/ 
+#VERILATOR := verilator --cc --exe -Wno-WIDTHCONCAT -Wno-lint -Wno-REDEFMACRO -Wno-WIDTH -Wno-UNOPTFLAT -Wno-style -I/home/connor/cy_st_2/chipyard/generators/boom/src/main/resources/vsrc/HardFloat/source  +incdir+/home/connor/cy_st_2/chipyard/generators/boom/src/main/resources/vsrc/rvv/ 
 
 #----------------------------------------------------------------------------------------
 # user configs
