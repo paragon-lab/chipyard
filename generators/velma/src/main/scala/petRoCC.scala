@@ -1,6 +1,9 @@
 class petRoCCControlUnit extends Module {
   val io = IO(new Bundle{
     val cmd = Input(new RoCCCommand)
+    val do_read = Output(Bool())
+    val read_addr = 
+  })
     //DECIDE ON OUTPUTS AS WE GO 
   
 ////////////////////////////////////Super basic IF/////////////////////////////////////////////////////
@@ -41,8 +44,11 @@ class petRoCCControlUnit extends Module {
 class petRoCCMemRequestMaker extends Module {
   val io = IO(new Bundle {
     //What inputs do we need to assemble the request?
-    val mreq = new HellaCacheReq
-    val req_sent = Bool()
+    //    val mreq = new HellaCacheReq <- don't need to input or output a mem request, saving just in case
+    val req_sent = Output(Bool())
+    val read_addr = Input(UINT(width = coreMaxAddrBits))
+    val do_read = Input(Bool())
+    val memop_size = Input(log2Ceil(8).U) //2^memop_size tells us the number of BYTES in our operation
   })
 
   // ASSEMBLE MEMORY REQUEST 
