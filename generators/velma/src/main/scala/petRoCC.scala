@@ -1,8 +1,12 @@
+
+
+
 class petRoCCControlUnit extends Module {
   val io = IO(new Bundle{
     val cmd = Input(new RoCCCommand)
     val do_read = Output(Bool())
-    val read_addr = 
+    val read_addr = Output(UINT(width = coreMaxAddrBits)) 
+    val rd = Output(UINT(5.W))
   })
     //DECIDE ON OUTPUTS AS WE GO 
   
@@ -32,6 +36,10 @@ class petRoCCControlUnit extends Module {
   val rs1d = cmd.bits.rs1 //the stored value in rs1
   val rs2d = cmd.bits.rs2 //the stored value in rs2
 
+  
+  io.read_addr := rs1d
+  io.rd := rd
+  
 // CHECK OUT OBJECT OPCODESET, LINE 400ISH, LAZYROCC.SCALA FOR FREE ENCODINGS 
 
 
@@ -43,12 +51,14 @@ class petRoCCControlUnit extends Module {
 
 class petRoCCMemRequestMaker extends Module {
   val io = IO(new Bundle {
-    //What inputs do we need to assemble the request?
-    //    val mreq = new HellaCacheReq <- don't need to input or output a mem request, saving just in case
-    val req_sent = Output(Bool())
+    //inputs
     val read_addr = Input(UINT(width = coreMaxAddrBits))
     val do_read = Input(Bool())
     val memop_size = Input(log2Ceil(8).U) //2^memop_size tells us the number of BYTES in our operation
+    //outputs
+    val mreq = new Output(HellaCacheReq)
+    val req_sent = Output(Bool())
+    val req_busy = Output(Bool())
   })
 
   // ASSEMBLE MEMORY REQUEST 
@@ -77,51 +87,64 @@ class petRoCCMemRequestMaker extends Module {
 
 class petRoCCMemResponseTaker extends Module {
   val io = IO(new Bundle {
-    val mresp = new HellaCacheResp
+    //inputs
+    val mresp = Input(new HellaCacheResp)
     //outputs: data, has_data, addr, ready/valid of some kind :)
+    val valid_read = Output(Bool())
+    val read_data = Output(UINT(xLen.W))
+    val mresp_busy = Output(Bool())
   })
 
 
 
   // HANDLE MEMORY RESPONSE 
-  val mresp = new HellaCacheResp 
-  mresp := io.mem.resp //connect to io
-  val has_data = mresp.bits.has_data
+  val mresp = io.mem.resp
+  val valid_read = mresp.valid && mresp.bits.has_data //do we have data?
   val read_data = mresp.bits.data
-
-  val data_read = Bool()
-  data_read = mresp.valid && mresp.bits.has_data //do we have data?
-  val data = Bits(width = coreDataBits)
-  data := mresp.bits.data
-
   val mresp_busy = Bool()
+
   when mresp.fire(){
-    mresp_busy = true.B}
+    mresp_busy := true.B}
   .otherwise{
-    mresp_busy = false.B}
+    mresp_busy := false.B}
+
+  io.valid_read := valid_read
+  io.read_data := read_data
+  io.mresp_busy := mresp_busy
+  
 
 }
 
 class petRoCCCoreResponseMaker extends Module {
   val io = IO(new Bundle {
+    //inputs
+    val rd = Input(Bits(5.W))
+    val data = Input(Bits(xLen.W))
+    val valid_read = Input(Bool())
+    val mresp_busy = Input(Bool())
+    val req_busy = Input(Bool())
+    //outputs
     val resp = Output(new RoCCResponse)
+    val busy = Output(Bool())
+
   })
 
   
 ///////////////////////////////// WB, As It Were /////////////////////////////////////
-  io.resp.valid := data_read
-  io.resp.bits.rd := rd
-  io.resp.bits.data := data
+  val resp = io.resp 
+  resp.valid := io.valid_read
+  resp.bits.rd := io.rd
+  resp.bits.data := io.data
 
-  io.interrupt := false.B
+
 
 ////////////////  Business ////////////////
-  io.busy := mresp_busy || req_busy 
+  io.busy := io.mresp_busy || io.req_busy 
 }
 
 class petRoCCSharpieMouth extends Module {
   val io = IO(new Bundle {
-    val data = Input(Bits(width = coreDataBits))
+    val data = Input(Bits(xLen.W)) //was width = coreDataBits
     val doit = Input(Bool())
   })
 
@@ -159,9 +182,9 @@ val exception = Input(Bool()) //input to handle exceptions
   //inputs
   ctrl.io.cmd := io.cmd
   //outputs
-  val do_read := ctrl.io.do_read
-  val read_addr := ctrl.io.read_addr
-  val memop_size := ctrl.io.memop_size
+  val do_read = ctrl.io.do_read
+  val read_addr = ctrl.io.read_addr
+  val memop_size = ctrl.io.memop_size
   
 
 ////////////////////////////////////////////////////////////////////
@@ -170,8 +193,17 @@ val exception = Input(Bool()) //input to handle exceptions
 
   val mreqer = Module(new petRoCCMemRequestMaker)
   //need to populate inputs and outputs
-  
-
+  //inputs
+  mreqer.io.read_addr := read_addr
+  mreqer.io.do_read := do_read
+  mreqer.io.memop_size := memop_size
+  //outputs
+  val mreq = new HellaCacheReq
+  val req_sent = mreqer.io.req_sent // Bool()
+  val req_busy = mreqer.io.req_busy//Bool()
+  mreq := mreqer.io.mreq
+  //req_sent := mreqer.io.req_sent
+  //req_busy := mreqer.io.req_busy
 
 ///////////////////////////////////////////////////////////////////
 //////////////////// Handling memresp //////////////////
@@ -179,7 +211,13 @@ val exception = Input(Bool()) //input to handle exceptions
 
 
   val mtaker = Module(new petRoCCMemResponseTaker)
-  //need to populate i/o
+  //inputs
+  val mresp = io.mem.resp
+  mtaker.io.mresp := mresp
+  //outputs
+  val valid_read = mtaker.io.valid_read
+  val read_data = mtaker.io.read_data
+  val mresp_busy = mtaker.io.busy
 
 
 //////////////////////////////////////////////////////////////////
@@ -187,9 +225,12 @@ val exception = Input(Bool()) //input to handle exceptions
 ///////////////////////////////////////////////
 
   val coresp = Module(new petRoCCCoreResponseMaker)
-  // INPUTS
-  // need to populate inputs
-  // OUTPUTS
+  //inputs
+  coresp.io.rd := ctrl.io.rd
+
+
+
+////////////////// Connect Response /////////////////////////////
   io.resp := coresp.io.resp
 
 }
