@@ -1,6 +1,5 @@
 
 
-
 class petRoCCControlUnit extends Module {
   val io = IO(new Bundle{
     val cmd = Input(new RoCCCommand)
@@ -100,7 +99,7 @@ class petRoCCMemResponseTaker extends Module {
   // HANDLE MEMORY RESPONSE 
   val mresp = io.mem.resp
   val valid_read = mresp.valid && mresp.bits.has_data //do we have data?
-  val read_data = mresp.bits.data
+  val read_data = RegEnable(mresp.bits.data, valid_read)//buffer the data when it comes in!
   val mresp_busy = Bool()
 
   when mresp.fire(){
@@ -227,11 +226,15 @@ val exception = Input(Bool()) //input to handle exceptions
   val coresp = Module(new petRoCCCoreResponseMaker)
   //inputs
   coresp.io.rd := ctrl.io.rd
-
-
-
-////////////////// Connect Response /////////////////////////////
+  coresp.io.data := read_data
+  coresp.io.valid_read := valid_read
+  coresp.io.mresp_busy := mresp_busy
+  coresp.io.req_busy := req_busy
+  //outputs  
   io.resp := coresp.io.resp
+  io.busy := coresp.io.busy
+
+
 
 }
 
