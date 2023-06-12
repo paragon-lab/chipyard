@@ -1,3 +1,7 @@
+/* petRoCC -- Author: Connor Selna
+ * Acknowledgements: Karl Hallsby is cool, Berkeley Architecture Research is also cool
+ */
+
 
 
 class petRoCCControlUnit extends Module {
@@ -7,16 +11,17 @@ class petRoCCControlUnit extends Module {
     val read_addr = Output(UINT(width = coreMaxAddrBits)) 
     val rd = Output(UINT(5.W))
   })
-    //DECIDE ON OUTPUTS AS WE GO 
-  
-////////////////////////////////////Super basic IF/////////////////////////////////////////////////////
+
+
+////////////////////////////////// Receive and Buffer Command //////////////////////////////////////////////////////
 //enable register updating to get cmd
   val cmd_regEn = io.cmd.valid //also going to want to AND this with inversions of our busy signals for to be safe
-  //store cmd 
+  /*store cmd, this basically works as our storage for all the control signals, since the control is determined
+    mostly combinationally--will still need to store our read data, though.*/
   val cmd = RegEnable(io.cmd, cmd_regEn)
 
 
-///////////////////////////////////Super basic ID/////////////////////////////////////////////////
+/////////////////////////////////// Extract Control Signals from cmd //////////////////////////////////////////////
 /* inst signals, we likely want all of this stored in a register when cmd.fire goes high.
  * at the moment, the way we handle cmd in IF takes care of this functionality, probably. */
 
@@ -59,7 +64,7 @@ class petRoCCMemRequestMaker extends Module {
     //inputs
     val read_addr = Input(UINT(width = coreMaxAddrBits))
     val do_read = Input(Bool())
-    val memop_size = Input(log2Ceil(8).U) //2^memop_size tells us the number of BYTES in our operation
+    val memop_size = Input(UINT) //2^memop_size tells us the number of BYTES in our operation
     //outputs
     val mreq = new Output(HellaCacheReq)
     val req_sent = Output(Bool())
@@ -150,9 +155,11 @@ class petRoCCCoreResponseMaker extends Module {
 class petRoCCSharpieMouth extends Module {
   val io = IO(new Bundle {
     val data = Input(Bits(xLen.W)) //was width = coreDataBits
-    val doit = Input(Bool())
+  //  val doit = Input(Bool())
   })
 
+  printf(cf"Hi! The piece of data you had me read was: $data")
+  
 }
 
 
@@ -178,7 +185,6 @@ val interrupt = Output(Bool())
 val exception = Input(Bool()) //input to handle exceptions
 */
 
-  //for our declarations of RoCCResponse and similar bundle-extending data, do we need the IO(new RoCCResponse syntax)
 
 /////////////////////////////////////////////////////////////////////
 /////////////////// Control Handling//////////////////
