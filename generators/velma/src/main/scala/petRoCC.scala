@@ -35,7 +35,13 @@ class petRoCCControlUnit extends Module {
   val rs1d = cmd.bits.rs1 //the stored value in rs1
   val rs2d = cmd.bits.rs2 //the stored value in rs2
 
-  
+  //feelin real dumb here: if we get a valid RoCCCommand, just straight up do the read.
+  when (cmd.valid){
+    io.do_read := true.B}
+  .otherwise{
+    io.do_read := false.B}
+
+
   io.read_addr := rs1d
   io.rd := rd
   
@@ -72,7 +78,7 @@ class petRoCCMemRequestMaker extends Module {
   mreq.bits.phys := false.B
   //mreq.bits.dprv := cmd.bits.status.dprv //THIS LINE NEEDS FIXING DUE TO MODULARIZATION
   //mreq.bits.dv := cmd.bits.status.dv //THIS LINE NEEDS FIXING DUE TO MODULARIZATION
-  mreq.valid := cmd.valid && (opcode == "b0000001".U) //valid command? read instruction? may need funct here.
+  mreq.valid := cmd.valid// LATTER PORTIONS COMMENTED FOR DUMB VERSON && (opcode == "b0000001".U) 
   mreq.ready := mreq.valid //not doing anything fancy rn, so as soon as our command is valid...
 
 
