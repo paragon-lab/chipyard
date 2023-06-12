@@ -14,13 +14,11 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.config.Parameters
 //import freechips.rocketchip.tile.{XLen, CoreModule, RoCCCommand}
 //import freechips.rocketchip.rocket.constants.MemoryOpConstants
-//import freechips.rocketchip.rocket.MStatus
-//import freechips.rocketchip.rocket.{HellaCacheReq, HellaCacheResp}
 import freechips.rocketchip.util.EnhancedChisel3Assign
 
 
 
-class petRoCCControlUnit(implicit p: Parameters) extends Module
+class petRoCCControlUnit(implicit val p: Parameters) extends Module
   with HasCoreParameters
   with HasNonDiplomaticTileParameters
   {
@@ -33,8 +31,6 @@ class petRoCCControlUnit(implicit p: Parameters) extends Module
 
 
 /////////////////////////////////// Extract Control Signals from cmd //////////////////////////////////////////////
-/* inst signals, we likely want all of this stored in a register when cmd.fire goes high.
- * at the moment, the way we handle cmd in IF takes care of this functionality, probably. */
   val cmd = io.cmd
   //instruction signals
   val inst = cmd.inst
@@ -67,9 +63,9 @@ class petRoCCControlUnit(implicit p: Parameters) extends Module
 
 
 
-class petRoCCMemRequestMaker(implicit p: Parameters) extends Module 
+class petRoCCMemRequestMaker(implicit val p: Parameters) extends Module 
   with HasCoreParameters
-  //with HasNonDiplomaticTileParameters
+  with HasNonDiplomaticTileParameters
   {
     val io = IO(new Bundle {
     //inputs
@@ -103,7 +99,7 @@ class petRoCCMemRequestMaker(implicit p: Parameters) extends Module
 
 }
 
-class petRoCCMemResponseTaker(implicit p: Parameters) extends Module 
+class petRoCCMemResponseTaker(implicit val p: Parameters) extends Module 
   with HasCoreParameters
   //with HasNonDiplomaticTileParameters
   {
@@ -130,7 +126,7 @@ class petRoCCMemResponseTaker(implicit p: Parameters) extends Module
 
 }
 
-class petRoCCCoreResponseMaker(implicit p: Parameters) extends Module
+class petRoCCCoreResponseMaker(implicit val p: Parameters) extends Module
   with HasCoreParameters
 //  with HasNonDiplomaticTileParameters
   {
@@ -159,7 +155,7 @@ class petRoCCCoreResponseMaker(implicit p: Parameters) extends Module
   io.busy := io.mresp_busy || io.req_busy 
 }
 
-class petRoCCSharpieMouth extends Module 
+class petRoCCSharpieMouth(implicit val p: Parameters) extends Module 
   with HasCoreParameters
 //  with HasNonDiplomaticTileParameters
   {
@@ -180,7 +176,9 @@ class petRoCC(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcod
 
 
 
-class petRoCCModule(outer: petRoCC)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) {
+class petRoCCModule(outer: petRoCC)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) 
+  with HasCoreParameters  
+{
 /*io here is implied to be a RoCCIO (extends RoCCCoreIO) type, maintain for now.
 RoCCIO signals: 
 val ptw = Vec(nPTWPorts, new TLBPTWIO)
@@ -199,9 +197,7 @@ val exception = Input(Bool()) //input to handle exceptions
 
 ////////////////////////////////// Receive and Buffer Command //////////////////////////////////////////////////////
 //enable register updating to get cmd
-  val cmd_regEn = io.cmd.fire() //also going to want to AND this with inversions of our busy signals for to be safe
-  /*store cmd, this basically works as our storage for all the control signals, since the control is determined
-    mostly combinationally--will still need to store our read data, though.*/
+  val cmd_regEn = io.cmd.fire() 
   val cmd = RegEnable(io.cmd, cmd_regEn)
 
 /////////////////////////////////////////////////////////////////////
@@ -209,7 +205,8 @@ val exception = Input(Bool()) //input to handle exceptions
 ////////////////////////////////////////
   val ctrl = Module(new petRoCCControlUnit)
   //inputs
-  ctrl.io.cmd := cmd
+ // ctrl.io.cmd.status  io.cmd.bits.status
+ ctrl.io.cmd := io.cmd.bits //this is one of the problem lines--cmd apparently missing status? 
   //outputs
   val do_read = ctrl.io.do_read
   val read_addr = ctrl.io.read_addr
@@ -221,7 +218,7 @@ val exception = Input(Bool()) //input to handle exceptions
 ////////////////////////////////////////////////////
 
 
-  val mreqer = Module(new petRoCCMemRequestMaker)
+  val mreqer = Module(new petRoCCMemRequestMaker()(p))
   //need to populate inputs and outputs
   //inputs
   val cmd_fire_in = io.cmd.fire()
