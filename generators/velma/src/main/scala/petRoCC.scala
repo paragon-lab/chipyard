@@ -10,7 +10,7 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.config._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tilelink._
-import chisel3.experimental.ChiselEnum
+//import chisel3.experimental.ChiselEnum
 import freechips.rocketchip.config.Parameters
 //import freechips.rocketchip.tile.{XLen, CoreModule, RoCCCommand}
 //import freechips.rocketchip.rocket.constants.MemoryOpConstants
@@ -20,8 +20,9 @@ import freechips.rocketchip.util.EnhancedChisel3Assign
 
 
 
-class petRoCCControlUnit extends Module
+class petRoCCControlUnit(implicit p: Parameters) extends Module
   with HasCoreParameters
+  with HasNonDiplomaticTileParameters
   {
   val io = IO(new Bundle{
     val cmd = Input(new RoCCCommand)
@@ -66,17 +67,21 @@ class petRoCCControlUnit extends Module
 
 
 
-class petRoCCMemRequestMaker extends Module 
-      with HasCoreParameters{
-  val io = IO(new Bundle {
+class petRoCCMemRequestMaker(implicit p: Parameters) extends Module 
+  with HasCoreParameters
+  //with HasNonDiplomaticTileParameters
+  {
+    val io = IO(new Bundle {
     //inputs
     val read_addr = Input(UInt(width = coreMaxAddrBits.W))
     val do_read = Input(Bool())
+    val cmd_fire_in = Input(Bool())
  //   val memop_size = Input(UInt()) //2^memop_size tells us the number of BYTES in our operation
     //outputs
     val mreq = Output(new HellaCacheReq)
-    val req_sent = Output(Bool())
-    val req_busy = Output(Bool())
+    val mreq_valid = Output(Bool())
+ //   val req_sent = Output(Bool())
+ //   val req_busy = Output(Bool())
   })
 
   // ASSEMBLE MEMORY REQUEST 
@@ -91,53 +96,43 @@ class petRoCCMemRequestMaker extends Module
   mreq.phys := false.B
   //mreq.bits.dprv := cmd.bits.status.dprv //THIS LINE NEEDS FIXING DUE TO MODULARIZATION
   //mreq.bits.dv := cmd.bits.status.dv //THIS LINE NEEDS FIXING DUE TO MODULARIZATION
-  mreq.valid := cmd.valid// LATTER PORTIONS COMMENTED FOR DUMB VERSON && (opcode == "b0000001".U) 
+ // mreq.valid := cmd.valid// LATTER PORTIONS COMMENTED FOR DUMB VERSON && (opcode == "b0000001".U) 
   
   //mreq.ready := mreq.valid //not doing anything fancy rn, so as soon as our command is valid...
         // -> so there apparently isn't an mreq.ready -- the readys come from the Decoupled subclasses
 
-  val req_busy = Bool()
-  when (mreq.fire){ 
-    req_busy := true.B} //is the request in flight? we're busy.
-  .otherwise{
-    req_busy := false.B
-    }
 }
 
-class petRoCCMemResponseTaker extends Module 
+class petRoCCMemResponseTaker(implicit p: Parameters) extends Module 
   with HasCoreParameters
+  //with HasNonDiplomaticTileParameters
   {
   val io = IO(new Bundle {
     //inputs
     val mresp = Input(new HellaCacheResp)
+    val mresp_valid = Input(Bool())
     //outputs: data, has_data, addr, ready/valid of some kind :)
     val valid_read = Output(Bool())
     val read_data = Output(UInt(xLen.W))
-    val mresp_busy = Output(Bool())
+  //  val mresp_busy = Output(Bool())
   })
 
 
 
   // HANDLE MEMORY RESPONSE 
-  val mresp = io.mem.resp
-  val valid_read = mresp.valid && mresp.bits.has_data //do we have data?
-  val read_data = RegEnable(mresp.bits.data, valid_read)//buffer the data when it comes in!
-  val mresp_busy = Bool()
-
-  when (mresp.fire()){
-    mresp_busy := true.B}
-  .otherwise{
-    mresp_busy := false.B}
-
+  val mresp = io.mresp
+  val valid_read = io.mresp_valid && mresp.has_data //do we have data?
+  val read_data = RegEnable(mresp.data, valid_read)//buffer the data when it comes in!
   io.valid_read := valid_read
   io.read_data := read_data
-  io.mresp_busy := mresp_busy
+  //io.mresp_busy := mresp_busy
   
 
 }
 
-class petRoCCCoreResponseMaker extends Module
+class petRoCCCoreResponseMaker(implicit p: Parameters) extends Module
   with HasCoreParameters
+//  with HasNonDiplomaticTileParameters
   {
   val io = IO(new Bundle {
     //inputs
@@ -155,7 +150,6 @@ class petRoCCCoreResponseMaker extends Module
   
 ///////////////////////////////// WB, As It Were /////////////////////////////////////
   val resp = io.resp 
-  resp.valid := io.valid_read
   resp.rd := io.rd
   resp.data := io.data
 
@@ -167,6 +161,7 @@ class petRoCCCoreResponseMaker extends Module
 
 class petRoCCSharpieMouth extends Module 
   with HasCoreParameters
+//  with HasNonDiplomaticTileParameters
   {
   val io = IO(new Bundle {
     val data = Input(Bits(xLen.W)) //was width = coreDataBits
@@ -225,20 +220,31 @@ val exception = Input(Bool()) //input to handle exceptions
 ////////////////// Assembling/Dispatching memreq ////////
 ////////////////////////////////////////////////////
 
+
   val mreqer = Module(new petRoCCMemRequestMaker)
   //need to populate inputs and outputs
   //inputs
+  val cmd_fire_in = io.cmd.fire()
   mreqer.io.read_addr := read_addr
   mreqer.io.do_read := do_read
+  mreqer.io.cmd_fire_in := cmd_fire_in
 //  mreqer.io.memop_size := memop_size
   //outputs
-  val mreq = new HellaCacheReq
-  val req_sent = mreqer.io.req_sent // Bool()
-  val req_busy = mreqer.io.req_busy//Bool()
-  mreq := mreqer.io.mreq
+  val mreq = mreqer.io.mreq
+  //val req_sent = mreqer.io.req_sent // Bool()
+  //val req_busy = mreqer.io.req_busy//Bool()
+  val mreq_valid = mreqer.io.mreq_valid
+  io.mem.req := mreq
+  io.mem.req.valid := mreq_valid 
   //req_sent := mreqer.io.req_sent
   //req_busy := mreqer.io.req_busy
 
+  val req_busy = Bool()
+  when (io.mem.req.fire()){ 
+    req_busy := true.B} //is the request in flight? we're busy.
+  .otherwise{
+    req_busy := false.B
+    }
 ///////////////////////////////////////////////////////////////////
 //////////////////// Handling memresp //////////////////
 ////////////////////////////////////////////////
@@ -247,12 +253,20 @@ val exception = Input(Bool()) //input to handle exceptions
   val mtaker = Module(new petRoCCMemResponseTaker)
   //inputs
   val mresp = io.mem.resp
+  val mresp_valid = io.mem.resp.valid
   mtaker.io.mresp := mresp
   //outputs
   val valid_read = mtaker.io.valid_read
   val read_data = mtaker.io.read_data
-  val mresp_busy = mtaker.io.busy
+ // val mresp_busy = mtaker.io.busy
 
+
+  val mresp_busy = Bool()
+
+  when (io.mem.resp.fire()){
+    mresp_busy := true.B}
+  .otherwise{
+    mresp_busy := false.B}
 
 //////////////////////////////////////////////////////////////////
 /////////////////// Responding to CPU /////////////////
