@@ -31,20 +31,12 @@ class petRoCCControlUnit extends Module
   })
 
 
-////////////////////////////////// Receive and Buffer Command //////////////////////////////////////////////////////
-//enable register updating to get cmd
-  val cmd_regEn = io.cmd.fire() //also going to want to AND this with inversions of our busy signals for to be safe
-  /*store cmd, this basically works as our storage for all the control signals, since the control is determined
-    mostly combinationally--will still need to store our read data, though.*/
-  val cmd = RegEnable(io.cmd, cmd_regEn)
-
-
 /////////////////////////////////// Extract Control Signals from cmd //////////////////////////////////////////////
 /* inst signals, we likely want all of this stored in a register when cmd.fire goes high.
  * at the moment, the way we handle cmd in IF takes care of this functionality, probably. */
-
+  val cmd = io.cmd
   //instruction signals
-  val inst = cmd.bits.inst
+  val inst = cmd.inst
   val opcode = inst.opcode 
   val rd = inst.rd //destination register number
   val rs1 = inst.rs1 //source register 1 number
@@ -55,8 +47,8 @@ class petRoCCControlUnit extends Module
   val xs2 = inst.xs2 // is the second source register being used?
 
   //rest of cmd
-  val rs1d = cmd.bits.rs1 //the stored value in rs1
-  val rs2d = cmd.bits.rs2 //the stored value in rs2
+  val rs1d = cmd.rs1 //the stored value in rs1
+  val rs2d = cmd.rs2 //the stored value in rs2
 
   //feelin real dumb here: if we get a valid RoCCCommand, just straight up do the read.
 //  when (cmd.valid){
@@ -80,7 +72,7 @@ class petRoCCMemRequestMaker extends Module
     //inputs
     val read_addr = Input(UInt(width = coreMaxAddrBits.W))
     val do_read = Input(Bool())
-    val memop_size = Input(UInt()) //2^memop_size tells us the number of BYTES in our operation
+ //   val memop_size = Input(UInt()) //2^memop_size tells us the number of BYTES in our operation
     //outputs
     val mreq = Output(new HellaCacheReq)
     val req_sent = Output(Bool())
@@ -90,7 +82,7 @@ class petRoCCMemRequestMaker extends Module
   // ASSEMBLE MEMORY REQUEST 
   val mreq = new HellaCacheReq
   io.mreq := mreq
-  mreq.addr := rs1d
+  mreq.addr := io.read_addr
   mreq.tag :=  3.U(2.W)//unsigned integer with width of 7 and value 3. If signed, would be -1.
   //mreq.bits.idx : //leaving this guy unused for now, the examples also don't use it and i'll just pray :)
   mreq.cmd := M_XRD //apparently how we issue a read; a store is issued as M_XWR
@@ -164,8 +156,8 @@ class petRoCCCoreResponseMaker extends Module
 ///////////////////////////////// WB, As It Were /////////////////////////////////////
   val resp = io.resp 
   resp.valid := io.valid_read
-  resp.bits.rd := io.rd
-  resp.bits.data := io.data
+  resp.rd := io.rd
+  resp.data := io.data
 
 
 
@@ -180,8 +172,9 @@ class petRoCCSharpieMouth extends Module
     val data = Input(Bits(xLen.W)) //was width = coreDataBits
   //  val doit = Input(Bool())
   })
-
-  printf(cf"Hi! The piece of data you had me read was: $data")
+  val data = io.data
+  //TODO: FIX THE PRINT STATEMENT 
+ // printf(cf"Hi! The piece of data you had me read was: $data")
   
 }
 
@@ -225,7 +218,7 @@ val exception = Input(Bool()) //input to handle exceptions
   //outputs
   val do_read = ctrl.io.do_read
   val read_addr = ctrl.io.read_addr
-  val memop_size = ctrl.io.memop_size
+ // val memop_size = ctrl.io.memop_size
   
 
 ////////////////////////////////////////////////////////////////////
@@ -237,7 +230,7 @@ val exception = Input(Bool()) //input to handle exceptions
   //inputs
   mreqer.io.read_addr := read_addr
   mreqer.io.do_read := do_read
-  mreqer.io.memop_size := memop_size
+//  mreqer.io.memop_size := memop_size
   //outputs
   val mreq = new HellaCacheReq
   val req_sent = mreqer.io.req_sent // Bool()
@@ -286,7 +279,7 @@ val exception = Input(Bool()) //input to handle exceptions
 class HasPetRoCC extends Config((site,here,up) => {
   case BuildRoCC => List (
     (p: Parameters) => {
-      val petRoCCMod = LazyModule(new Velma(OpcodeSet.custom0)(p))
+      val petRoCCMod = LazyModule(new petRoCC(OpcodeSet.custom0)(p))
       petRoCCMod
     })
 })
