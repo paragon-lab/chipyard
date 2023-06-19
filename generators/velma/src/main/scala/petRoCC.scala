@@ -81,15 +81,13 @@ class petRoCCMemRequestMaker(implicit val p: Parameters) extends Module
   })
 
   // ASSEMBLE MEMORY REQUEST 
-  val mreq = new HellaCacheReq
-  io.mreq := mreq
-  mreq.addr := io.read_addr
-  mreq.tag :=  3.U(2.W)//unsigned integer with width of 7 and value 3. If signed, would be -1.
+  io.mreq.addr := io.read_addr
+  io.mreq.tag :=  RegInit(3.U(2.W))//unsigned integer with width of 7 and value 3. If signed, would be -1.
   //mreq.bits.idx : //leaving this guy unused for now, the examples also don't use it and i'll just pray :)
-  mreq.cmd := M_XRD //apparently how we issue a read; a store is issued as M_XWR
-  mreq.size := log2Ceil(8).U //size of data we want--log_2(8)=3
-  mreq.data := 0.U //doing a read for now.
-  mreq.phys := false.B
+  io.mreq.cmd := RegInit(M_XRD) //apparently how we issue a read; a store is issued as M_XWR
+  io.mreq.size := RegInit(log2Ceil(8).U(3.W)) //size of data we want--log_2(8)=3
+  io.mreq.data := 0.U(coreMaxAddrBits.W) //doing a read for now.
+  io.mreq.phys := false.B
   //mreq.bits.dprv := cmd.bits.status.dprv //THIS LINE NEEDS FIXING DUE TO MODULARIZATION
   //mreq.bits.dv := cmd.bits.status.dv //THIS LINE NEEDS FIXING DUE TO MODULARIZATION
  // mreq.valid := cmd.valid// LATTER PORTIONS COMMENTED FOR DUMB VERSON && (opcode == "b0000001".U) 
@@ -219,25 +217,28 @@ val exception = Input(Bool()) //input to handle exceptions
 ////////////////////////////////////////////////////
 
 
-  val mreqer = Module(new petRoCCMemRequestMaker()(p))
+  val mreqer = Module(new petRoCCMemRequestMaker)
   //need to populate inputs and outputs
   //inputs
   val cmd_fire_in = io.cmd.fire()
   mreqer.io.read_addr := read_addr
   mreqer.io.do_read := do_read
   mreqer.io.cmd_fire_in := cmd_fire_in
+  
 //  mreqer.io.memop_size := memop_size
   //outputs
   val mreq = mreqer.io.mreq
   //val req_sent = mreqer.io.req_sent // Bool()
   //val req_busy = mreqer.io.req_busy//Bool()
-  val mreq_valid = mreqer.io.mreq_valid
-  io.mem.req := mreq
+  val mreq_valid = mreqer.io.mreq_valid //this signal may well genuinely exist. however, 
+  //it is NOT a signal in HellaCacheReqs as far as I can tell. IF it exists, it comes from
+  //the RoCC's decoupledIO (RoCCIO extends Decoupled)
+  io.mem.req.bits := mreq
   io.mem.req.valid := mreq_valid 
   //req_sent := mreqer.io.req_sent
   //req_busy := mreqer.io.req_busy
 
-  val req_busy = Bool()
+  val req_busy = RegInit(false.B)
   when (io.mem.req.fire()){ 
     req_busy := true.B} //is the request in flight? we're busy.
   .otherwise{
@@ -250,16 +251,17 @@ val exception = Input(Bool()) //input to handle exceptions
 
   val mtaker = Module(new petRoCCMemResponseTaker)
   //inputs
-  val mresp = io.mem.resp
+  val mresp = io.mem.resp.bits
   val mresp_valid = io.mem.resp.valid
   mtaker.io.mresp := mresp
+  //val  mtaker.io.mresp
   //outputs
   val valid_read = mtaker.io.valid_read
   val read_data = mtaker.io.read_data
  // val mresp_busy = mtaker.io.busy
 
 
-  val mresp_busy = Bool()
+  val mresp_busy = RegInit(false.B)
 
   when (io.mem.resp.fire()){
     mresp_busy := true.B}
@@ -278,7 +280,7 @@ val exception = Input(Bool()) //input to handle exceptions
   coresp.io.mresp_busy := mresp_busy
   coresp.io.req_busy := req_busy
   //outputs  
-  io.resp := coresp.io.resp
+  io.resp.bits := coresp.io.resp
   io.busy := coresp.io.busy
 
 
