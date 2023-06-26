@@ -72,6 +72,8 @@ class petRoCCMemRequestMaker(implicit val p: Parameters) extends Module
     val read_addr = Input(UInt(width = coreMaxAddrBits.W))
     val do_read = Input(Bool())
     val cmd_fire_in = Input(Bool())
+    val dv = Input(Bool())
+    val dprv = Input(UInt(width = (PRV.SZ).W))
  //   val memop_size = Input(UInt()) //2^memop_size tells us the number of BYTES in our operation
     //outputs
     val mreq = Output(new HellaCacheReq)
@@ -88,9 +90,14 @@ class petRoCCMemRequestMaker(implicit val p: Parameters) extends Module
   io.mreq.size := RegInit(log2Ceil(8).U(3.W)) //size of data we want--log_2(8)=3
   io.mreq.data := 0.U(coreMaxAddrBits.W) //doing a read for now.
   io.mreq.phys := false.B
-  //mreq.bits.dprv := cmd.bits.status.dprv //THIS LINE NEEDS FIXING DUE TO MODULARIZATION
-  //mreq.bits.dv := cmd.bits.status.dv //THIS LINE NEEDS FIXING DUE TO MODULARIZATION
- // mreq.valid := cmd.valid// LATTER PORTIONS COMMENTED FOR DUMB VERSON && (opcode == "b0000001".U) 
+  io.mreq.mask := "b11111111".U
+  io.mreq.no_alloc := true.B
+  io.mreq.no_xcpt := true.B
+  io.mreq.signed := false.B
+  io.mreq.dprv := io.dprv 
+  io.mreq.dv := io.dv
+  io.mreq_valid := io.do_read
+  //io.mreq.valid := do_read// LATTER PORTIONS COMMENTED FOR DUMB VERSON && (opcode == "b0000001".U) 
   
   //mreq.ready := mreq.valid //not doing anything fancy rn, so as soon as our command is valid...
         // -> so there apparently isn't an mreq.ready -- the readys come from the Decoupled subclasses
@@ -196,7 +203,7 @@ val exception = Input(Bool()) //input to handle exceptions
 ////////////////////////////////// Receive and Buffer Command //////////////////////////////////////////////////////
 //enable register updating to get cmd
   val cmd_regEn = io.cmd.fire() 
-  val cmd = RegEnable(io.cmd, cmd_regEn)
+ // val cmd = RegEnable(io.cmd, cmd_regEn)
 
 
 /////////////////////////////////////////////////////////////////////
@@ -224,7 +231,8 @@ val exception = Input(Bool()) //input to handle exceptions
   mreqer.io.read_addr := read_addr
   mreqer.io.do_read := do_read
   mreqer.io.cmd_fire_in := cmd_fire_in
-  
+  mreqer.io.dv := io.cmd.bits.status.dv
+  mreqer.io.dprv := io.cmd.bits.status.dprv
 //  mreqer.io.memop_size := memop_size
   //outputs
   val mreq = mreqer.io.mreq
@@ -234,7 +242,8 @@ val exception = Input(Bool()) //input to handle exceptions
   //it is NOT a signal in HellaCacheReqs as far as I can tell. IF it exists, it comes from
   //the RoCC's decoupledIO (RoCCIO extends Decoupled)
   io.mem.req.bits := mreq
-  io.mem.req.valid := mreq_valid 
+  io.mem.req.valid := mreq_valid
+  
   //req_sent := mreqer.io.req_sent
   //req_busy := mreqer.io.req_busy
 
@@ -254,6 +263,7 @@ val exception = Input(Bool()) //input to handle exceptions
   val mresp = io.mem.resp.bits
   val mresp_valid = io.mem.resp.valid
   mtaker.io.mresp := mresp
+  mtaker.io.mresp_valid := do_read //probably dumb in the long run but...
   //val  mtaker.io.mresp
   //outputs
   val valid_read = mtaker.io.valid_read
